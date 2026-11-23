@@ -1,0 +1,15 @@
+{
+  "EnvironmentVariables": [
+    {
+      "SchemaName": "sr_ServiceDeskUrl",
+      "Value": "https://servicedesk.example.com/api"
+    }
+  ],
+  "ConnectionReferences": [
+    {
+      "LogicalName": "sr_ServiceDeskConnection",
+      "ConnectionId": "c0nn-dev-4711",
+      "ConnectorId": "/providers/Microsoft.PowerApps/apis/shared_webcontents"
+    }
+  ]
+}

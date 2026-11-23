@@ -1,0 +1,86 @@
+# Release pipeline for the "Store Requests" Power Platform solution (Azure DevOps).
+# Builds the solution from source control, then deploys it as a managed solution to DEV, TST and PRD
+# with the Power Platform CLI (pac).
+
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  solutionName: StoreRequests
+  tenantId: 11111111-2222-3333-4444-555555555555
+  PP_CLIENT_SECRET: demo-secret-7Hk2-do-not-use
+
+stages:
+  - stage: Build
+    jobs:
+      - job: build
+        steps:
+          - script: dotnet tool install --global Microsoft.PowerApps.CLI.Tool
+            displayName: Install Power Platform CLI
+          - script: pac solution pack --zipfile $(Build.ArtifactStagingDirectory)/$(solutionName)_managed.zip --folder src/$(solutionName) --packagetype Managed
+            displayName: Pack the managed solution
+          - script: pac solution check --path $(Build.ArtifactStagingDirectory)/$(solutionName)_managed.zip --outputDirectory $(Build.ArtifactStagingDirectory)/checker
+            displayName: Run the solution checker
+          - publish: $(Build.ArtifactStagingDirectory)
+            artifact: solution
+
+  - stage: DEV
+    dependsOn: Build
+    variables:
+      envUrl: https://storerequests-dev.crm4.dynamics.com
+      appId: aaaaaaaa-0000-0000-0000-00000000d001
+    jobs:
+      - deployment: deploy
+        environment: dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: dotnet tool install --global Microsoft.PowerApps.CLI.Tool
+                  displayName: Install Power Platform CLI
+                - script: pac auth create --url $(envUrl) --applicationId $(appId) --clientSecret $(PP_CLIENT_SECRET) --tenant $(tenantId)
+                  displayName: Sign in
+                - script: pac solution import --path $(Pipeline.Workspace)/solution/$(solutionName)_managed.zip --settings-file settings/dev.json
+                  displayName: Import into DEV
+
+  - stage: TST
+    dependsOn: DEV
+    variables:
+      envUrl: https://storerequests-tst.crm4.dynamics.com
+      appId: aaaaaaaa-0000-0000-0000-00000000e002
+    jobs:
+      - deployment: deploy
+        environment: tst
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: dotnet tool install --global Microsoft.PowerApps.CLI.Tool
+                  displayName: Install Power Platform CLI
+                - script: pac auth create --url $(envUrl) --applicationId $(appId) --clientSecret $(PP_CLIENT_SECRET) --tenant $(tenantId)
+                  displayName: Sign in
+                - script: pac solution import --path $(Pipeline.Workspace)/solution/$(solutionName)_managed.zip --settings-file settings/tst.json
+                  displayName: Import into TST
+
+  - stage: PRD
+    dependsOn: Build
+    condition: always()
+    variables:
+      envUrl: https://storerequests.crm4.dynamics.com
+      appId: aaaaaaaa-0000-0000-0000-00000000f003
+    jobs:
+      - job: deploy
+        steps:
+          - download: current
+            artifact: solution
+          - script: dotnet tool install --global Microsoft.PowerApps.CLI.Tool
+            displayName: Install Power Platform CLI
+          - script: pac auth create --url $(envUrl) --applicationId $(appId) --clientSecret $(PP_CLIENT_SECRET) --tenant $(tenantId)
+            displayName: Sign in
+          - script: pac solution import --path $(Pipeline.Workspace)/solution/$(solutionName)_managed.zip --settings-file settings/prd.json
+            displayName: Import into PRD
